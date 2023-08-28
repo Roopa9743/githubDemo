@@ -1,36 +1,31 @@
 # cloudbuild.yaml
 
+# cloudbuild.yaml
+
 steps:
+
+- name: eu.gcr.io/$PROJECT_ID/cloudbuild-android
+  id: 'docker-pull'
+  args: ['cp', '-a', '.', '/persistent_volume']
+  volumes:
+  - name: data
+    path: /persistent_volume
+
 - name: gcr.io/cloud-builders/docker
-  id: 'cloudbuild-android'
-  env:
-    - 'BUILD=$BUILD_ID'
-    - 'PROJECT=$PROJECT_ID'
-    - 'REV=$REVISION_ID'
-  args: [
-    'build',
-    '-t', 'eu.gcr.io/$PROJECT_ID/cloudbuild-android:${SHORT_SHA}',
-    '-t', 'eu.gcr.io/$PROJECT_ID/cloudbuild-android:latest',
+  id: 'gradle-build'
+  volumes:
+  - name: data
+    path: /persistent_volume
+  args: ['run', '-v', 'data:/workspace', '--rm', 'eu.gcr.io/$PROJECT_ID/cloudbuild', '/bin/sh', '-c', 'cd /workspace && ./gradlew mobile:assembleDebug && mv mobile/build/outputs/apk/debug/mobile-debug.apk mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk && ls -la mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk']
 
-    # These are used by Cloud Build variable substitutions (as shown in screenshot_01.png):
-    # https://cloud.google.com/cloud-build/docs/configuring-builds/substitute-variable-values
-    #'--build-arg', 'ANDROID_SDK_PACKAGES="${_ANDROID_SDK_PACKAGES"}',
-    #'--build-arg', 'GRADLE_WRAPPER_VERSION=${_GRADLE_WRAPPER_VERSION}',
+- name: gcr.io/cloud-builders/gsutil
+  id: 'publish-gsutil'
+  args: ['cp', '/persistent_volume/mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk', 'gs://eu.artifacts.$PROJECT_ID.appspot.com/android/']
+  volumes:
+  - name: data
+    path: /persistent_volume
 
-    # By default these static values are being used, without the NDK (build-trigger configuration not required.
-    # Note: When commenting these out, one has to run `./gradlew build` to fetch the components instead.
-    # '--build-arg', 'ANDROID_SDK_PACKAGES=platform-tools platforms;android-34 build-tools;34.0.0 ndk;23.1.7779620',
-    '--build-arg', 'ANDROID_SDK_PACKAGES=platform-tools platforms;android-34 build-tools;34.0.0',
-    '--build-arg', 'GRADLE_WRAPPER_VERSION=8.0',
-
-    # enable cloudbuild network
-    '--network', 'cloudbuild',
-    '.'
-  ]
-
-images:
-- 'eu.gcr.io/$PROJECT_ID/cloudbuild-android:${SHORT_SHA}'
-- 'eu.gcr.io/$PROJECT_ID/cloudbuild-android:latest'
+timeout: 1200s
 
 options:
   logging: CLOUD_LOGGING_ONLY
