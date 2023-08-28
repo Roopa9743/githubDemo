@@ -1,7 +1,5 @@
 # cloudbuild.yaml
 
-# cloudbuild.yaml
-
 steps:
 
 - name: eu.gcr.io/$PROJECT_ID/cloudbuild-android
@@ -11,19 +9,38 @@ steps:
   - name: data
     path: /persistent_volume
 
-- name: gcr.io/cloud-builders/docker
-  id: 'gradle-build'
+- name: gcr.io/cloud-builders/gcloud
+  id: 'kms-decode'
+  entrypoint: 'bash'
+  waitFor: ['docker-pull']
+  args:
+    - '-c'
+    - |
+      mkdir -p /persistent_volume/.android
+      gcloud kms decrypt --ciphertext-file=credentials/keystore.properties.enc --plaintext-file=/persistent_volume/keystore.properties --location=global --keyring=android-gradle --key=default
+      gcloud kms decrypt --ciphertext-file=credentials/google-service-account.json.enc --plaintext-file=/persistent_volume/credentials/google-service-account.json --location=global --keyring=android-gradle --key=default
+      gcloud kms decrypt --ciphertext-file=credentials/google-services.json.enc --plaintext-file=/persistent_volume/mobile/google-services.json --location=global --keyring=android-gradle --key=default
+      gcloud kms decrypt --ciphertext-file=credentials/debug.keystore.enc --plaintext-file=/persistent_volume/.android/debug.keystore --location=global --keyring=android-gradle --key=default
+      gcloud kms decrypt --ciphertext-file=credentials/release.keystore.enc --plaintext-file=/persistent_volume/.android/release.keystore --location=global --keyring=android-gradle --key=default
+      rm -v ./credentials/*.enc
   volumes:
-  - name: data
-    path: /persistent_volume
-  args: ['run', '-v', 'data:/workspace', '--rm', 'eu.gcr.io/$PROJECT_ID/cloudbuild', '/bin/sh', '-c', 'cd /workspace && ./gradlew mobile:assembleDebug && mv mobile/build/outputs/apk/debug/mobile-debug.apk mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk && ls -la mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk']
+    - name: data
+      path: /persistent_volume
 
-- name: gcr.io/cloud-builders/gsutil
-  id: 'publish-gsutil'
-  args: ['cp', '/persistent_volume/mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk', 'gs://eu.artifacts.$PROJECT_ID.appspot.com/android/']
+- name: gcr.io/cloud-builders/docker
+  id: 'firebase-distribution'
+  waitFor: ['kms-decode']
+  env:
+    - 'BUILD_NUMBER=$BUILD_ID'
   volumes:
-  - name: data
-    path: /persistent_volume
+    - name: data
+      path: /persistent_volume
+  args: [
+    'run',
+    '--rm', 'eu.gcr.io/$PROJECT_ID/cloudbuild',
+    '-v', 'data:/workspace',
+    '/bin/sh', '-c', 'cd /workspace && ./gradlew mobile:assembleRelease mobile:appDistributionUploadRelease'
+  ]
 
 timeout: 1200s
 
