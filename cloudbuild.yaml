@@ -7,3 +7,6 @@ steps:
       #!/usr/bin/env bash
 
       git branch -a
+
+options:
+  logging: CLOUD_LOGGING_ONLY
