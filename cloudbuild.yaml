@@ -1,12 +1,27 @@
 steps:
 
-  - name: bash
+- name: eu.gcr.io/$PROJECT_ID/cloudbuild-android
+  id: 'docker-pull'
+  args: ['cp', '-a', '.', '/persistent_volume']
+  volumes:
+  - name: data
+    path: /persistent_volume
 
-    script: |
+- name: gcr.io/cloud-builders/docker
+  id: 'gradle-build'
+  volumes:
+  - name: data
+    path: /persistent_volume
+  args: ['run', '-v', 'data:/workspace', '--rm', 'eu.gcr.io/$PROJECT_ID/cloudbuild', '/bin/sh', '-c', 'cd /workspace && ./gradlew mobile:assembleDebug && mv mobile/build/outputs/apk/debug/mobile-debug.apk mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk && ls -la mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk']
 
-      #!/usr/bin/env bash
+- name: gcr.io/cloud-builders/gsutil
+  id: 'publish-gsutil'
+  args: ['cp', '/persistent_volume/mobile/build/outputs/apk/debug/$REPO_NAME-$SHORT_SHA-debug.apk', 'gs://eu.artifacts.$PROJECT_ID.appspot.com/android/']
+  volumes:
+  - name: data
+    path: /persistent_volume
 
-      git branch -a
+timeout: 1200s
 
 options:
   logging: CLOUD_LOGGING_ONLY
