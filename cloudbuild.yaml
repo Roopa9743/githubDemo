@@ -1,48 +1,9 @@
-# cloudbuild.yaml
-
 steps:
 
-- name: eu.gcr.io/$PROJECT_ID/cloudbuild-android
-  id: 'docker-pull'
-  args: ['cp', '-a', '.', '/persistent_volume']
-  volumes:
-  - name: data
-    path: /persistent_volume
+  - name: bash
 
-- name: gcr.io/cloud-builders/gcloud
-  id: 'kms-decode'
-  entrypoint: 'bash'
-  waitFor: ['docker-pull']
-  args:
-    - '-c'
-    - |
-      mkdir -p /persistent_volume/.android
-      gcloud kms decrypt --ciphertext-file=credentials/keystore.properties.enc --plaintext-file=/persistent_volume/keystore.properties --location=global --keyring=android-gradle --key=default
-      gcloud kms decrypt --ciphertext-file=credentials/google-service-account.json.enc --plaintext-file=/persistent_volume/credentials/google-service-account.json --location=global --keyring=android-gradle --key=default
-      gcloud kms decrypt --ciphertext-file=credentials/google-services.json.enc --plaintext-file=/persistent_volume/mobile/google-services.json --location=global --keyring=android-gradle --key=default
-      gcloud kms decrypt --ciphertext-file=credentials/debug.keystore.enc --plaintext-file=/persistent_volume/.android/debug.keystore --location=global --keyring=android-gradle --key=default
-      gcloud kms decrypt --ciphertext-file=credentials/release.keystore.enc --plaintext-file=/persistent_volume/.android/release.keystore --location=global --keyring=android-gradle --key=default
-      rm -v ./credentials/*.enc
-  volumes:
-    - name: data
-      path: /persistent_volume
+    script: |
 
-- name: gcr.io/cloud-builders/docker
-  id: 'firebase-distribution'
-  waitFor: ['kms-decode']
-  env:
-    - 'BUILD_NUMBER=$BUILD_ID'
-  volumes:
-    - name: data
-      path: /persistent_volume
-  args: [
-    'run',
-    '--rm', 'eu.gcr.io/$PROJECT_ID/cloudbuild',
-    '-v', 'data:/workspace',
-    '/bin/sh', '-c', 'cd /workspace && ./gradlew mobile:assembleRelease mobile:appDistributionUploadRelease'
-  ]
+      #!/usr/bin/env bash
 
-timeout: 1200s
-
-options:
-  logging: CLOUD_LOGGING_ONLY
+      git branch -a
